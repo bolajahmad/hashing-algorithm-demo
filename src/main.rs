@@ -1,17 +1,29 @@
 use std::convert::TryInto;
+use std::str;
+use rug::{float, Float};
 
 const BLOCK_SIZE: usize = 32; // Size of each block in bits
 const HASH_SIZE: usize = 32; // Size of the hash code in bits
 
-struct XorHasher {
+struct SHA512Hasher {
     state: [u8; HASH_SIZE],
     block_count: usize,
 }
 
-impl XorHasher {
+impl SHA512Hasher {
     fn new() -> Self {
-        XorHasher {
-            state: [0; HASH_SIZE],
+        let mut initial_state = [0; HASH_SIZE];
+        let initializing_primes: [f64; 8] = [2.0, 3.0, 5.0, 7.0, 11.0, 13.0, 17.0, 19.0];
+
+        for (id, prime) in initializing_primes.iter().enumerate() {
+            let fract_sqrt = convert_f64_to_bytes(prime);
+
+            println!("prime: {:?}; fract_sqrt: {:?}", prime, fract_sqrt);
+            initial_state[id * 8..(id + 1) * 8].copy_from_slice(&fract_sqrt.to_be_bytes());
+        } 
+
+        SHA512Hasher {
+            state: initial_state,
             block_count: 0,
         }
     }
@@ -42,10 +54,43 @@ impl XorHasher {
             self.state[i] ^= block[i];
         }
     }
+
+    /// The SHA-512 padding method is described by Willian in his  book
+    /// The message is split into 1024-bit blocks first.
+    /// The message is padded to length ~== 896 % 1024;
+    /// The length of the message is also appended to the message
+    fn pad(mut message: Vec<u8>) -> Vec<u8> {
+        // the message length (in bits): 8 bits = 1 byte
+        let original_len = message.len() as u64 * 8;
+
+        // append 1 byte to the message
+        message.push(0x80);
+
+        // append 0 bits so message.len() ~= 896 % 1024
+        while (message.len() * 8) % 1024 != 896 {
+            message.push(0x00);
+        }
+
+        // append the original length as a 128-bit value
+        // append to the last 
+        let mut length_bytes = [0u8; 16];
+        length_bytes[8..].copy_from_slice(&original_len.to_be_bytes());
+
+        message.extend_from_slice(&length_bytes);
+        message
+    }
+}
+
+fn convert_f64_to_bytes(value: &f64) -> u64 {
+    let precision = 256;
+    let float = Float::with_val(precision, *value);
+    let fractional_part = float.sqrt().fract();
+
+    fractional_part.to_integer_round(float::Round::Down).unwrap().0.to_u64().unwrap()
 }
 
 fn xor_hash(data: &[u8]) -> [u8; HASH_SIZE] {
-    let mut hasher = XorHasher::new();
+    let mut hasher = SHA512Hasher::new();
     hasher.update(data);
     hasher.finalize()
 }
@@ -90,6 +135,15 @@ mod tests {
         println!("{:?}", attack.len());
         println!("{:?}", xor_hash(&data));
         println!("{:?}", xor_hash(&attack));
+    }
+
+    #[test]
+    fn padding_message_works() {
+        let message = b"abc".to_vec();
+        let padded_message = SHA512Hasher::pad(message.clone());
+
+        println!("padded message length{:?}; message length {:?}", padded_message.len(), message.len());
+        assert_eq!((padded_message.len() * 8) % 1024, 0);
     }
 }
 

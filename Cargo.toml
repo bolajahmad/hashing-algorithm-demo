@@ -7,3 +7,4 @@ edition = "2021"
 
 [dependencies]
 quickcheck = "1.0.3"
+rug = "1.24.1"
