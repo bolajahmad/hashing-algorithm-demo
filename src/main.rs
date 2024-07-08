@@ -1,6 +1,6 @@
 use std::convert::TryInto;
 use std::str;
-use rug::{float, Float};
+use rug::{float, ops::Pow, Float};
 
 #[inline(always)]
 fn rotate_right(x: u64, n: u32) -> u64 {
@@ -63,24 +63,23 @@ const SHA_CONSTANTS: [u64; 80] = [
     0x4cc5d4becb3e42b6, 0x597f299cfc657e2a, 0x5fcb6fab3ad6faec, 0x6c44198c4a475817,
 ];
 
-const BLOCK_SIZE: usize = 16; // Size of each block in bits
+const BLOCK_SIZE: usize = 64; // Size of each block in bits
 const HASH_SIZE: usize = 8; // Size of the hash code in bits
 
 struct SHA512Hasher {
-    state: [u8; HASH_SIZE],
+    state: [u64; HASH_SIZE],
     block_count: usize,
 }
 
 impl SHA512Hasher {
     fn new() -> Self {
-        let mut initial_state = [0; HASH_SIZE];
+        let mut initial_state = [0u64; HASH_SIZE];
         let initializing_primes: [f64; 8] = [2.0, 3.0, 5.0, 7.0, 11.0, 13.0, 17.0, 19.0];
 
         for (id, prime) in initializing_primes.iter().enumerate() {
             let fract_sqrt = convert_f64_to_bytes(prime);
 
-            println!("prime: {:?}; fract_sqrt: {:?}", prime, fract_sqrt);
-            initial_state[id * 8..(id + 1) * 8].copy_from_slice(&fract_sqrt.to_be_bytes());
+            initial_state[id] = fract_sqrt;
         } 
 
         SHA512Hasher {
@@ -98,6 +97,7 @@ impl SHA512Hasher {
             let block_size = remaining.min(BLOCK_SIZE);
 
             block[..block_size].copy_from_slice(&data[offset..offset + block_size]);
+            
             self.process_block(&block);
 
             offset += block_size;
@@ -105,7 +105,8 @@ impl SHA512Hasher {
         }
     }
 
-    fn finalize(self) -> [u8; HASH_SIZE] {
+    fn finalize(self) -> [u64; HASH_SIZE] {
+        println!("FInal state of hash: {:?}", self.state);
         self.state
     }
 
@@ -200,14 +201,17 @@ impl SHA512Hasher {
 fn convert_f64_to_bytes(value: &f64) -> u64 {
     let precision = 256;
     let float = Float::with_val(precision, *value);
-    let fractional_part = float.sqrt().fract();
+    let mut fractional_part = float.sqrt().fract();
+    println!("Fractional part, {}", fractional_part);
 
+    fractional_part *= Float::with_val(precision, 2).pow(64);
     fractional_part.to_integer_round(float::Round::Down).unwrap().0.to_u64().unwrap()
 }
 
-fn xor_hash(data: &[u8]) -> [u8; HASH_SIZE] {
+fn xor_hash(data: &[u8]) -> [u64; HASH_SIZE] {
     let mut hasher = SHA512Hasher::new();
-    hasher.update(data);
+    let padded_message = SHA512Hasher::pad(data.to_vec());
+    hasher.update(&padded_message);
     hasher.finalize()
 }
 
@@ -234,6 +238,18 @@ mod tests {
     use quickcheck::QuickCheck;
 
     use super::*;
+
+    #[test]
+    fn initialize_hasher_state_works() {
+        // Calling the new method should initialize state: [u8; 8];
+        let hasher = SHA512Hasher::new();
+
+        let mut bytes = [0u64; HASH_SIZE];
+        bytes.copy_from_slice(&hasher.state[..hasher.state.len()]);
+
+        assert_eq!(bytes[1], 0xBB67AE8584CAA73B, "State could not be validated");
+        assert_eq!(bytes[6], 0x1F83D9ABFB41BD6B, "State could not be validated");
+    }
 
     #[test]
     fn test_xor_attack() {
