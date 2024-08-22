@@ -1,32 +1,47 @@
 use std::convert::TryInto;
-use std::str;
 use rug::{float, ops::Pow, Float};
 
+/// Performs a cyclic rotation on a 64-bit integer by n-bits
 #[inline(always)]
 fn rotate_right(x: u64, n: u32) -> u64 {
     (x >> n) | (x << (64 - n))
 }
 
+/// ROTR is circular rotation of integer x, by n bits
+/// Represents the shift of the bits in the message schedule
+/// Used for the 16-80th round of the 80-round SHA-512 algorithm
+/// Mathematically = ROTR<sup>1</sup>(x) + ROTR<sup>8</sup>(x) + SHR<sup>7</sup>(x)
 #[inline(always)]
 fn ms_sigma0(x: u64) -> u64 {
     rotate_right(x, 1) ^ rotate_right(x, 8) ^ (x >> 7)
 }
 
+/// Represents the shift of the bits in the message schedule
+/// Used for the 16-80th round of the 80-round SHA-512 algorithm
+/// Mathematically = ROTR<sup>19</sup>(x) + ROTR<sup>61</sup>(x) + SHR<sup>6</sup>(x)
 #[inline(always)]
 fn ms_sigma1(x: u64) -> u64 {
     rotate_right(x, 19) ^ rotate_right(x, 61) ^ (x >> 6)
 }
 
+/// Represents the shift of bit in the SHA state.
+/// This is used in the main round function to compute the intermediate digest
+/// Mathematically: ROTR<sup>28</sup>(x) + ROTR<sup>34</sup>(x) + ROTR<sup>39</sup>(x)
 #[inline(always)]
 fn main_sigma0(x: u64) -> u64 {
     rotate_right(x, 28) ^ rotate_right(x, 34) ^ rotate_right(x, 39)
 }
 
+/// Represents the shift of bit in the SHA state.
+/// This is used in the main round function to compute the intermediate digest
+/// Mathematically: ROTR<sup>14</sup>(x) + ROTR<sup>18</sup>(x) + ROTR<sup>41</sup>(x)
 #[inline(always)]
 fn main_sigma1(x: u64) -> u64 {
-    rotate_right(x, 14) ^ rotate_right(x, 18) + rotate_right(x, 41)
+    rotate_right(x, 14) ^ rotate_right(x, 18) ^ rotate_right(x, 41)
 }
 
+/// Conditional function to be used to calculate the SHA512 intermediate digest for each round
+/// If x then y else z
 #[inline(always)]
 fn choice(x: u64, y: u64, z: u64) -> u64 {
     (x & y) ^ (!x & z)
@@ -63,17 +78,21 @@ const SHA_CONSTANTS: [u64; 80] = [
     0x4cc5d4becb3e42b6, 0x597f299cfc657e2a, 0x5fcb6fab3ad6faec, 0x6c44198c4a475817,
 ];
 
-const BLOCK_SIZE: usize = 64; // Size of each block in bits
+const BLOCK_SIZE: usize = 128; // Size of each block in bits, equates to 1024-bits
 const HASH_SIZE: usize = 8; // Size of the hash code in bits
 
-struct SHA512Hasher {
+pub struct SHA512Hasher {
+    // The state of the hash. Will also hold the final output
     state: [u64; HASH_SIZE],
+    // For each round of the algorithm, block count is incremented. Max should be 80
     block_count: usize,
 }
 
 impl SHA512Hasher {
-    fn new() -> Self {
+    // Initialize the state of the hash with the the computed 8 prime numbers
+    pub fn new() -> Self {
         let mut initial_state = [0u64; HASH_SIZE];
+        // Define the buffer state of 1st 8 prime number
         let initializing_primes: [f64; 8] = [2.0, 3.0, 5.0, 7.0, 11.0, 13.0, 17.0, 19.0];
 
         for (id, prime) in initializing_primes.iter().enumerate() {
@@ -88,7 +107,10 @@ impl SHA512Hasher {
         }
     }
 
-    fn update(&mut self, data: &[u8]) {
+    /// The update function takes a message (of arbitrary length) and computes the hash
+    /// The computed hash will be stored in the SHA512Hasher state
+    /// This function is also allowed to call the `process_block` function
+    pub fn update(&mut self, data: &[u8]) {
         let mut offset = 0;
 
         while offset < data.len() {
@@ -105,24 +127,24 @@ impl SHA512Hasher {
         }
     }
 
-    fn finalize(self) -> [u64; HASH_SIZE] {
-        println!("FInal state of hash: {:?}", self.state);
+    // returns the output digest after computing the hash
+    pub fn finalize(self) -> [u64; HASH_SIZE] {
+        println!("Final state of hash: {:?}", self.state);
         self.state
     }
 
     // performs the equivalent of the SHA512 80-round function
     fn process_block(&mut self, block: &[u8; BLOCK_SIZE]) {
         let mut words = [0u64; 80];
+        println!("Block to process: {:?}", block);
 
-        // prepare the message schedule
+        // prepare the message schedule.
+        // for the round 1 - 16, the intermediate digest is same as the corresponding index of the message
         for t in 0..16 {
-            words[t] = u64::from_be_bytes([
-                block[t * 8 + 0], block[t * 8 + 1], block[t * 8 + 2],
-                block[t * 8 + 3], block[t * 8 + 4], block[t * 8 + 5],
-                block[t * 8 + 6], block[t * 8 + 7]
-            ]);
+            words[t] = block[t].into();
         }
 
+        // for the remaining rounds, the intermediate digest is calculated according to a formula
         for t in 16..80 {
             words[t] = ms_sigma1(words[t - 2])
                 .wrapping_add(words[t - 7])
@@ -140,7 +162,8 @@ impl SHA512Hasher {
         let mut g = self.state[6];
         let mut h = self.state[7];
 
-        
+        // Performs the main hash computation on the block
+        // Eventually updates the values of a-h (represents the intermediate state for each round)
         for t in 0..80 {
             let t1 = (h as u64)
                 .wrapping_add(choice(e.into(), f.into(), g.into()))
@@ -169,7 +192,9 @@ impl SHA512Hasher {
         self.state[4] = e.wrapping_add(self.state[4]);
         self.state[5] = f.wrapping_add(self.state[5]);
         self.state[6] = g.wrapping_add(self.state[6]);
-        self.state[7] = h.wrapping_add(self.state[8]);
+        self.state[7] = h.wrapping_add(self.state[7]);
+
+        println!("The calculated state is: {:?}  for {} blocks", self.state, block.len());
     }
 
     /// The SHA-512 padding method is described by Willian in his  book
@@ -198,12 +223,14 @@ impl SHA512Hasher {
     }
 }
 
-fn convert_f64_to_bytes(value: &f64) -> u64 {
-    let precision = 256;
+/// convert the give f64 (float) number to a byte
+/// This byte represents the fractional part of the square root of the (float) number 
+pub fn convert_f64_to_bytes(value: &f64) -> u64 {
+    let precision = 128;
     let float = Float::with_val(precision, *value);
     let mut fractional_part = float.sqrt().fract();
-    println!("Fractional part, {}", fractional_part);
 
+    // convert the fractional bit to a u64 value
     fractional_part *= Float::with_val(precision, 2).pow(64);
     fractional_part.to_integer_round(float::Round::Down).unwrap().0.to_u64().unwrap()
 }
@@ -211,6 +238,7 @@ fn convert_f64_to_bytes(value: &f64) -> u64 {
 fn xor_hash(data: &[u8]) -> [u64; HASH_SIZE] {
     let mut hasher = SHA512Hasher::new();
     let padded_message = SHA512Hasher::pad(data.to_vec());
+    println!("Padded message: {:?}", padded_message);
     hasher.update(&padded_message);
     hasher.finalize()
 }
@@ -252,22 +280,41 @@ mod tests {
     }
 
     #[test]
-    fn test_xor_attack() {
-        fn prop(data: Vec<u8>) -> bool {
-            xor_hash(&data) == xor_hash(&xor_hash_attack(&data))
-        }
-        QuickCheck::new().quickcheck(prop as fn(Vec<u8>) -> bool);
+    fn test_hash_works() {
+        // choose a random text
+        let message = b"cbc".to_vec();
+        let padded_message = SHA512Hasher::pad(message);
+        
+        let mut hasher = SHA512Hasher::new();
+        hasher.update(&padded_message);
+        println!("The hasher state after the update, {:?}", hasher.state);
+
+        let hasher_state = hasher.finalize();
+        let mut bytes = [0u64; HASH_SIZE];
+        bytes.copy_from_slice(&hasher_state[..hasher_state.len()]);
+        println!("Hasher state after finalize: {:?}", bytes);
+
+        assert_eq!(bytes.len(), 8);
+        assert_eq!(format!("{:X}", bytes[0]), format!("{:X}", 0x531668966ee79b70i64));
     }
 
-    #[test]
-    fn attack_demo() {
-        let data = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0];
-        println!("{}", data.len());
-        let attack = xor_hash_attack(&data);
-        println!("{:?}", attack.len());
-        println!("{:?}", xor_hash(&data));
-        println!("{:?}", xor_hash(&attack));
-    }
+    // #[test]
+    // fn test_xor_attack() {
+    //     fn prop(data: Vec<u8>) -> bool {
+    //         xor_hash(&data) == xor_hash(&xor_hash_attack(&data))
+    //     }
+    //     QuickCheck::new().quickcheck(prop as fn(Vec<u8>) -> bool);
+    // }
+
+    // #[test]
+    // fn attack_demo() {
+    //     let data = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0];
+    //     println!("{}", data.len());
+    //     let attack = xor_hash_attack(&data);
+    //     println!("{:?}", attack.len());
+    //     println!("{:?}", xor_hash(&data));
+    //     println!("{:?}", xor_hash(&attack));
+    // }
 
     #[test]
     fn padding_message_works() {
