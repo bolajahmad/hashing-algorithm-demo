@@ -119,7 +119,7 @@ impl SHA512Hasher {
             let block_size = remaining.min(BLOCK_SIZE);
 
             block[..block_size].copy_from_slice(&data[offset..offset + block_size]);
-            
+            println!("Block to process at offset: {:?} is {:?} with length, {}", offset, block, block.len());
             self.process_block(&block);
 
             offset += block_size;
@@ -129,14 +129,18 @@ impl SHA512Hasher {
 
     // returns the output digest after computing the hash
     pub fn finalize(self) -> [u64; HASH_SIZE] {
-        println!("Final state of hash: {:?}", self.state);
+        let mut final_data = Vec::new();
+            // convert to bytes
+            for bit in self.state.iter() {
+                final_data.push(format!("{:X}", bit));
+            }
+            println!("Final state of hash {:?} hex value for bit {:?}", final_data, self.state);
         self.state
     }
 
     // performs the equivalent of the SHA512 80-round function
     fn process_block(&mut self, block: &[u8; BLOCK_SIZE]) {
         let mut words = [0u64; 80];
-        println!("Block to process: {:?}", block);
 
         // prepare the message schedule.
         // for the round 1 - 16, the intermediate digest is same as the corresponding index of the message
@@ -182,6 +186,15 @@ impl SHA512Hasher {
             c = b;
             b = a;
             a = t1.wrapping_add(t2).try_into().unwrap();
+
+            let combined_data = [a, b, c, d, e, f, g, h];
+
+            let mut internal_data = Vec::new();
+            // convert to bytes
+            for bit in combined_data.iter() {
+                internal_data.push(format!("{:X}", bit));
+            }
+            println!("Internal data per round {t} {:?} hex value for bit {:?}", internal_data, combined_data);
         }
 
         // Update the state
@@ -194,7 +207,7 @@ impl SHA512Hasher {
         self.state[6] = g.wrapping_add(self.state[6]);
         self.state[7] = h.wrapping_add(self.state[7]);
 
-        println!("The calculated state is: {:?}  for {} blocks", self.state, block.len());
+        // println!("The calculated state is: {:?}  for {} blocks", self.state, block.len());
     }
 
     /// The SHA-512 padding method is described by Willian in his  book
@@ -260,6 +273,18 @@ fn xor_hash_attack(data: &[u8]) -> Vec<u8> {
     mathcing_message
 }
 
+fn main() {
+    let message = "abc".as_bytes();
+
+    let hasher = SHA512Hasher::new();
+    // convert to bytes
+    hasher.finalize();
+
+    let mut hasher = SHA512Hasher::new();
+    let padded_message = SHA512Hasher::pad(message.to_vec());
+    hasher.update(&padded_message);
+    hasher.finalize();
+}
 #[cfg(test)]
 mod tests {
 
@@ -282,7 +307,7 @@ mod tests {
     #[test]
     fn test_hash_works() {
         // choose a random text
-        let message = b"cbc".to_vec();
+        let message = b"abc".to_vec();
         let padded_message = SHA512Hasher::pad(message);
         
         let mut hasher = SHA512Hasher::new();
@@ -326,6 +351,3 @@ mod tests {
     }
 }
 
-fn main() {
-    println!("Hello, world!");
-}
