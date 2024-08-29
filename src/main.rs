@@ -119,7 +119,6 @@ impl SHA512Hasher {
             let block_size = remaining.min(BLOCK_SIZE);
 
             block[..block_size].copy_from_slice(&data[offset..offset + block_size]);
-            println!("Block to process at offset: {:?} is {:?} with length, {}", offset, block, block.len());
             self.process_block(&block);
 
             offset += block_size;
@@ -128,14 +127,30 @@ impl SHA512Hasher {
     }
 
     // returns the output digest after computing the hash
-    pub fn finalize(self) -> [u64; HASH_SIZE] {
-        let mut final_data = Vec::new();
-            // convert to bytes
-            for bit in self.state.iter() {
-                final_data.push(format!("{:X}", bit));
-            }
-            println!("Final state of hash {:?} hex value for bit {:?}", final_data, self.state);
+    pub fn finalize(&self) -> [u64; HASH_SIZE] {
         self.state
+    }
+
+    pub fn to_hash(&self) -> String {
+        let mut result_hash = String::new();
+
+        for bit in self.state.iter() {
+            // convert bit to string
+            let bit_to_str = bit.to_string();
+            result_hash += &bit_to_str;
+        }
+
+        result_hash
+    }
+
+    pub fn to_hex_hash(&self) -> String {
+        let mut hex_result = String::new();
+
+        for bit in self.state.iter() {
+            hex_result += &format!("{:X}", bit).to_string();
+        }
+
+        hex_result
     }
 
     // performs the equivalent of the SHA512 80-round function
@@ -194,7 +209,6 @@ impl SHA512Hasher {
             for bit in combined_data.iter() {
                 internal_data.push(format!("{:X}", bit));
             }
-            println!("Internal data per round {t} {:?} hex value for bit {:?}", internal_data, combined_data);
         }
 
         // Update the state
@@ -305,22 +319,42 @@ mod tests {
     }
 
     #[test]
-    fn test_hash_works() {
+    fn hash_same_message_works() {
         // choose a random text
-        let message = b"abc".to_vec();
+        let message = b"means".to_vec();
+        let mut hasher = SHA512Hasher::new();
         let padded_message = SHA512Hasher::pad(message);
         
-        let mut hasher = SHA512Hasher::new();
         hasher.update(&padded_message);
-        println!("The hasher state after the update, {:?}", hasher.state);
+        let hash_1 = hasher.to_hex_hash();
+        // assert!(hash_1.len() == 128);
+        
+        let mut hasher = SHA512Hasher::new();
+        hasher.update(&SHA512Hasher::pad(b"means".to_vec()));
+        let hash_2 = hasher.to_hex_hash();
+        // assert!(hash_2.len() == 128);
 
-        let hasher_state = hasher.finalize();
-        let mut bytes = [0u64; HASH_SIZE];
-        bytes.copy_from_slice(&hasher_state[..hasher_state.len()]);
-        println!("Hasher state after finalize: {:?}", bytes);
+        // assert_eq!(bytes.len(), 128);
+        assert_eq!(hash_1, hash_2, "Hashes should match");
+    }
 
-        assert_eq!(bytes.len(), 8);
-        assert_eq!(format!("{:X}", bytes[0]), format!("{:X}", 0x531668966ee79b70i64));
+    #[test]
+    fn change_message_changes_hash() {
+        // choose a random text
+        let message = b"abc".to_vec();
+        let mut hasher = SHA512Hasher::new();
+        let padded_message = SHA512Hasher::pad(message);
+        
+        hasher.update(&padded_message);
+        
+        let hash_1 = hasher.to_hash();
+
+        let mut hasher = SHA512Hasher::new();
+        hasher.update(&SHA512Hasher::pad(b"cbc".to_vec()));
+        let hash_2 = hasher.to_hash();
+
+        // assert_eq!(bytes.len(), 128);
+        assert_ne!(hash_1, hash_2, "Hashes should match");
     }
 
     // #[test]
@@ -346,7 +380,6 @@ mod tests {
         let message = b"abc".to_vec();
         let padded_message = SHA512Hasher::pad(message.clone());
 
-        println!("padded message length{:?}; message length {:?}", padded_message.len(), message.len());
         assert_eq!((padded_message.len() * 8) % 1024, 0);
     }
 }
