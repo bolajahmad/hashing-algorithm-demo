@@ -354,7 +354,7 @@ mod tests {
         let hash_2 = hasher.to_hash();
 
         // assert_eq!(bytes.len(), 128);
-        assert_ne!(hash_1, hash_2, "Hashes should match");
+        assert_ne!(hash_1, hash_2, "Hashes should not match");
     }
 
     // #[test]
