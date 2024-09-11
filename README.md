@@ -7,11 +7,11 @@
 
 ## SHA512 Logic
 
-Sha is Single Hash Algorithm and is a reliable one-way hashinh algorithm that is used to create cryptographic specific lenght texts from a list of characters. This demo presents the algorithm for the SHA512 algo (there's a list of supported SHA algorithms including, SHA1|SHA2).
+Sha is Single Hash Algorithm and is a reliable one-way hashing algorithm that is used to create cryptographic specific length texts from a list of characters. This demo presents the algorithm for the SHA512 algorithm (there's a list of supported SHA algorithms involving, SHA1|SHA2).
 
 ## How it works
 
-This SHA512 algorithm takes as input a message with `maximum length, L` less than *2<sup>128</sup>* amd produces an output of 512-bit digest. The input passed is processes in different blocks, each 1024-bit long.
+This SHA512 algorithm takes as input (as message) with `maximum length, L` less than *2<sup>128</sup>* amd produces an output of 512-bit digest. The input passed is processed in different blocks, each 1024-bit long.
 
 The message (to be hashed) is padded, so that `L == 896 mod 1024`, with single 1-bit, followed by as many 0-bit as needed.
 
@@ -29,9 +29,6 @@ The SHA ritual consists of some prerequisite data that need to be provided. Thin
 SHA512 is made up of 80 rounds of hashing that the code will depict. For each round we will use the buffer defined and also the Hashing constants defined to compute the digest. The digest at the end of the 80th round is also computed to give the final output digest. This 80 round hashing is done for each (1024bit) block of the message input.
 
 
-
 ## What makes the SHA (512) secure?
-
-
 
 Refer Chapter 11 of William Stallings - Cryptography and Network Security Principles and Practice, Global Edition-Pearson (2022) book.
